@@ -13,6 +13,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Locate project
+        shell: bash
+        run: |
+          echo "--- repo files ---"
+          ls -la
+          SPEC=$(find . -name buildozer.spec -not -path './.buildozer/*' | head -1)
+          if [ -z "$SPEC" ]; then
+            echo "ERROR: buildozer.spec not found in the repository"
+            exit 1
+          fi
+          echo "PROJECT_DIR=$(dirname "$SPEC")" >> "$GITHUB_ENV"
+          echo "Found $SPEC"
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -35,6 +48,7 @@ jobs:
           pip install buildozer==1.5.0 "cython<3" virtualenv setuptools
 
       - name: Syntax check
+        working-directory: ${{ env.PROJECT_DIR }}
         run: python -m compileall -q main.py jarvis
 
       - name: Cache Buildozer data
@@ -42,14 +56,24 @@ jobs:
         with:
           path: |
             ~/.buildozer
-            .buildozer
-          key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
+            ${{ env.PROJECT_DIR }}/.buildozer
+          key: buildozer-${{ runner.os }}-${{ hashFiles('**/buildozer.spec') }}
           restore-keys: buildozer-${{ runner.os }}-
 
       - name: Build debug APK
-        run: buildozer -v android debug 2>&1 | tee build.log
+        working-directory: ${{ env.PROJECT_DIR }}
+        shell: bash
+        run: |
+          set -o pipefail
+          buildozer -v android debug 2>&1 | tee build.log
+
+      - name: Show end of log on failure
+        if: failure()
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: tail -n 80 build.log || true
 
       - name: Verify APK exists
+        working-directory: ${{ env.PROJECT_DIR }}
         run: |
           ls -l bin/*.apk
           test -n "$(ls bin/*.apk 2>/dev/null)"
@@ -58,7 +82,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: jarvis-ai-debug-apk
-          path: bin/*.apk
+          path: ${{ env.PROJECT_DIR }}/bin/*.apk
           if-no-files-found: error
 
       - name: Upload build log
@@ -66,5 +90,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build-log
-          path: build.log
+          path: ${{ env.PROJECT_DIR }}/build.log
           if-no-files-found: ignore
