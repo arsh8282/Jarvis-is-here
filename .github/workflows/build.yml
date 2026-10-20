@@ -13,15 +13,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Locate project
+      - name: Unpack zip if needed and locate project
         shell: bash
         run: |
-          echo "--- repo files ---"
-          ls -la
-          SPEC=$(find . -name buildozer.spec -not -path './.buildozer/*' | head -1)
+          if [ -z "$(find . -name buildozer.spec -not -path './.git/*' | head -1)" ]; then
+            for z in *.zip; do [ -f "$z" ] && unzip -o -q "$z"; done
+          fi
+          SPEC=$(find . -name buildozer.spec -not -path './.buildozer/*' -not -path './.git/*' | head -1)
           if [ -z "$SPEC" ]; then
-            echo "ERROR: buildozer.spec not found in the repository"
-            exit 1
+            echo "ERROR: buildozer.spec not found"; ls -la; exit 1
           fi
           echo "PROJECT_DIR=$(dirname "$SPEC")" >> "$GITHUB_ENV"
           echo "Found $SPEC"
